@@ -3,128 +3,937 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dashboard — TiffinTrack</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+
+    <title>TiffinTrack Dashboard</title>
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    >
+
     <style>
-        body { background: #fdf6ec; font-family: 'Segoe UI', sans-serif; }
-        .card-soft { border: none; border-radius: 14px; box-shadow: 0 4px 18px rgba(0,0,0,0.06); }
-        .status-active { background: #e6f7ec; color: #1b8a4a; }
-        .status-paused { background: #fff2e6; color: #d35400; }
+        body {
+            background: #fdf6ec;
+            font-family: "Segoe UI", sans-serif;
+        }
+
+        .card-soft {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+        }
+
+        .status-active {
+            background: #e6f7ec;
+            color: #198754;
+        }
+
+        .status-paused {
+            background: #fff0e6;
+            color: #d35400;
+        }
+
+        .status-noplan {
+            background: #eeeeee;
+            color: #666;
+        }
+
+        textarea {
+            min-height: 220px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
     </style>
 </head>
+
 <body>
+
 <div class="container py-4">
 
+    <!-- HEADER -->
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold mb-0">🍱 TiffinTrack Dashboard</h2>
-        <a href="/logout" class="btn btn-outline-secondary btn-sm">Log out</a>
+        <div>
+            <h2 class="fw-bold mb-1">🍱 TiffinTrack</h2>
+            <div class="text-secondary">
+                Tiffin subscription & billing console
+            </div>
+        </div>
+
+        <div class="text-end">
+            <div class="small text-secondary mb-2">
+                Logged in as <strong>{{ session["username"] }}</strong>
+                <br>
+                System date:
+                <strong id="systemDate">{{ today }}</strong>
+            </div>
+
+            <a
+                href="/logout"
+                class="btn btn-outline-secondary btn-sm"
+            >
+                Logout
+            </a>
+        </div>
     </div>
 
-    {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert alert-info py-2 small">{{ message }}</div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
+    <!-- ALERT -->
+    <div
+        id="alertBox"
+        class="alert d-none"
+        role="alert"
+    ></div>
 
     <div class="row g-4">
-        <!-- Add customer -->
+
+        <!-- SUBSCRIBE -->
         <div class="col-lg-4">
-            <div class="card-soft p-4">
-                <h5 class="fw-bold mb-3">Add customer</h5>
-                <form action="/api/customers" method="POST">
+            <div class="card card-soft p-4 h-100">
+
+                <h5 class="fw-bold mb-3">
+                    Subscribe Customer
+                </h5>
+
+                <form id="subscribeForm">
+
                     <div class="mb-3">
-                        <input type="text" name="name" placeholder="Full name" class="form-control" required>
+                        <label class="form-label small">
+                            Customer Name
+                        </label>
+
+                        <input
+                            type="text"
+                            name="name"
+                            class="form-control"
+                            placeholder="Full name"
+                            required
+                        >
                     </div>
+
                     <div class="mb-3">
-                        <input type="text" name="phone" placeholder="Phone number" class="form-control" required>
+                        <label class="form-label small">
+                            Phone
+                        </label>
+
+                        <input
+                            type="text"
+                            name="phone"
+                            class="form-control"
+                            placeholder="Phone number"
+                            required
+                        >
                     </div>
+
                     <div class="mb-3">
-                        <input type="number" step="0.01" name="plan_price" placeholder="Monthly plan price (₹)" class="form-control" required>
+                        <label class="form-label small">
+                            Monthly Plan Price
+                        </label>
+
+                        <input
+                            type="number"
+                            step="0.01"
+                            min="1"
+                            name="plan_price"
+                            class="form-control"
+                            placeholder="3000"
+                            required
+                        >
                     </div>
-                    <button type="submit" class="btn btn-warning w-100 fw-semibold">Add customer</button>
+
+                    <button
+                        type="submit"
+                        class="btn btn-warning w-100 fw-semibold"
+                    >
+                        Subscribe
+                    </button>
+
                 </form>
             </div>
         </div>
 
-        <!-- Customer list -->
+
+        <!-- CUSTOMER TABLE -->
         <div class="col-lg-8">
-            <div class="card-soft p-4">
-                <form method="GET" class="row g-2 mb-3">
-                    <div class="col-md-7">
-                        <input type="text" name="search" value="{{ search }}" placeholder="Search by name or phone…" class="form-control">
+            <div class="card card-soft p-4">
+
+                <div
+                    class="d-flex justify-content-between align-items-center mb-3"
+                >
+                    <h5 class="fw-bold mb-0">
+                        Customers
+                    </h5>
+
+                    <button
+                        class="btn btn-sm btn-outline-secondary"
+                        onclick="loadCustomersFromApi()"
+                    >
+                        Refresh API
+                    </button>
+                </div>
+
+                <!-- SEARCH / SORT -->
+                <form
+                    method="GET"
+                    action="/dashboard"
+                    class="row g-2 mb-4"
+                >
+
+                    <div class="col-md-6">
+                        <input
+                            type="text"
+                            name="search"
+                            value="{{ search }}"
+                            class="form-control"
+                            placeholder="Search by name or phone"
+                        >
                     </div>
-                    <div class="col-md-3">
-                        <select name="sort" class="form-select">
-                            <option value="name" {% if sort=='name' %}selected{% endif %}>Sort: Name</option>
-                            <option value="phone" {% if sort=='phone' %}selected{% endif %}>Sort: Phone</option>
-                            <option value="price" {% if sort=='price' %}selected{% endif %}>Sort: Plan price</option>
-                            <option value="status" {% if sort=='status' %}selected{% endif %}>Sort: Status</option>
+
+                    <div class="col-md-4">
+                        <select
+                            name="sort"
+                            class="form-select"
+                        >
+                            <option
+                                value="name"
+                                {% if sort == "name" %}selected{% endif %}
+                            >
+                                Sort: Name
+                            </option>
+
+                            <option
+                                value="phone"
+                                {% if sort == "phone" %}selected{% endif %}
+                            >
+                                Sort: Phone
+                            </option>
+
+                            <option
+                                value="price"
+                                {% if sort == "price" %}selected{% endif %}
+                            >
+                                Sort: Plan Price
+                            </option>
+
+                            <option
+                                value="status"
+                                {% if sort == "status" %}selected{% endif %}
+                            >
+                                Sort: Status
+                            </option>
                         </select>
                     </div>
+
                     <div class="col-md-2">
-                        <button type="submit" class="btn btn-dark w-100">Go</button>
+                        <button
+                            type="submit"
+                            class="btn btn-dark w-100"
+                        >
+                            Search
+                        </button>
                     </div>
+
                 </form>
 
+
                 <div class="table-responsive">
+
                     <table class="table align-middle">
+
                         <thead>
-                            <tr class="text-secondary small text-uppercase">
+                            <tr class="small text-secondary">
                                 <th>Customer</th>
                                 <th>Status</th>
-                                <th>This month</th>
+                                <th>Served</th>
                                 <th>Bill</th>
-                                <th class="text-end">Action</th>
+                                <th class="text-end">Actions</th>
                             </tr>
                         </thead>
+
                         <tbody>
-                            {% for row in rows %}
-                            {% set c = row.c %}
+
+                        {% for row in rows %}
+
+                            {% set customer = row.customer %}
+                            {% set sub = row.subscription %}
+
                             <tr>
+
                                 <td>
-                                    <div class="fw-semibold">{{ c.name }}</div>
-                                    <div class="text-secondary small">{{ c.phone }}</div>
+                                    <div class="fw-semibold">
+                                        {{ customer.name }}
+                                    </div>
+
+                                    <div class="small text-secondary">
+                                        {{ customer.phone }}
+                                    </div>
                                 </td>
+
                                 <td>
-                                    <span class="badge rounded-pill px-3 py-2 {% if c.status=='Active' %}status-active{% else %}status-paused{% endif %}">
-                                        {{ c.status }}
+                                    <span
+                                        class="badge rounded-pill px-3 py-2
+                                        {% if row.status == 'Active' %}
+                                            status-active
+                                        {% elif row.status == 'Paused' %}
+                                            status-paused
+                                        {% else %}
+                                            status-noplan
+                                        {% endif %}"
+                                    >
+                                        {{ row.status }}
                                     </span>
                                 </td>
-                                <td class="small text-secondary">{{ row.served_days }} / {{ row.total_days }} days served</td>
-                                <td class="fw-bold text-success">₹{{ row.bill }}</td>
+
+                                <td>
+                                    <span class="small text-secondary">
+                                        {{ row.served_days }}
+                                        /
+                                        {{ row.total_days }}
+                                    </span>
+                                </td>
+
+                                <td>
+                                    <strong class="text-success">
+                                        ₹{{ "%.2f"|format(row.bill) }}
+                                    </strong>
+                                </td>
+
                                 <td class="text-end">
-                                    {% if c.status == 'Active' %}
-                                        <form action="/api/customers/{{ c.id }}/pause" method="POST" class="d-inline">
-                                            <button class="btn btn-sm btn-outline-danger rounded-pill px-3">Pause</button>
-                                        </form>
+
+                                    {% if sub %}
+
+                                        {% if row.status == "Active" %}
+
+                                            <button
+                                                class="btn btn-sm btn-outline-danger"
+                                                onclick="pauseSubscription({{ sub.id }})"
+                                            >
+                                                Pause
+                                            </button>
+
+                                        {% else %}
+
+                                            <button
+                                                class="btn btn-sm btn-outline-success"
+                                                onclick="resumeSubscription({{ sub.id }})"
+                                            >
+                                                Resume
+                                            </button>
+
+                                        {% endif %}
+
+                                        <button
+                                            class="btn btn-sm btn-outline-primary"
+                                            onclick="transferSubscription({{ sub.id }})"
+                                        >
+                                            Transfer
+                                        </button>
+
+                                        <button
+                                            class="btn btn-sm btn-outline-danger"
+                                            onclick="deleteCustomer({{ customer.id }})"
+                                        >
+                                            Delete
+                                        </button>
+
                                     {% else %}
-                                        <form action="/api/customers/{{ c.id }}/resume" method="POST" class="d-inline">
-                                            <button class="btn btn-sm btn-outline-success rounded-pill px-3">Resume</button>
-                                        </form>
+
+                                        <span class="small text-secondary">
+                                            No active plan
+                                        </span>
+
                                     {% endif %}
+
+                                </td>
+
+                            </tr>
+
+                        {% else %}
+
+                            <tr>
+                                <td
+                                    colspan="5"
+                                    class="text-center text-secondary py-4"
+                                >
+                                    No customers found.
                                 </td>
                             </tr>
-                            {% else %}
-                            <tr><td colspan="5" class="text-center text-secondary py-4">No customers found.</td></tr>
-                            {% endfor %}
+
+                        {% endfor %}
+
                         </tbody>
+
                     </table>
+
                 </div>
 
-                <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+
+                <!-- PAGINATION -->
+                <div
+                    class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top"
+                >
+
                     {% if pagination.has_prev %}
-                        <a href="{{ url_for('dashboard', page=pagination.prev_num, search=search, sort=sort) }}" class="btn btn-sm btn-outline-secondary">← Prev</a>
-                    {% else %}<span></span>{% endif %}
-                    <span class="text-secondary small">Page {{ pagination.page }} of {{ pagination.pages }}</span>
+
+                        <a
+                            href="{{ url_for(
+                                'dashboard',
+                                page=pagination.prev_num,
+                                search=search,
+                                sort=sort
+                            ) }}"
+                            class="btn btn-sm btn-outline-secondary"
+                        >
+                            ← Previous
+                        </a>
+
+                    {% else %}
+
+                        <span></span>
+
+                    {% endif %}
+
+
+                    <span class="small text-secondary">
+                        Page
+                        {{ pagination.page }}
+                        of
+                        {{ pagination.pages }}
+                    </span>
+
+
                     {% if pagination.has_next %}
-                        <a href="{{ url_for('dashboard', page=pagination.next_num, search=search, sort=sort) }}" class="btn btn-sm btn-outline-secondary">Next →</a>
-                    {% else %}<span></span>{% endif %}
+
+                        <a
+                            href="{{ url_for(
+                                'dashboard',
+                                page=pagination.next_num,
+                                search=search,
+                                sort=sort
+                            ) }}"
+                            class="btn btn-sm btn-outline-secondary"
+                        >
+                            Next →
+                        </a>
+
+                    {% else %}
+
+                        <span></span>
+
+                    {% endif %}
+
                 </div>
+
             </div>
         </div>
+
     </div>
+
+
+    <!-- T1 -->
+    <div class="card card-soft p-4 mt-4">
+
+        <h5 class="fw-bold">
+            🌅 Morning Notification Service
+        </h5>
+
+        <p class="text-secondary small">
+            Move the simulated system date and generate delivery
+            notifications for active, non-paused customers.
+        </p>
+
+        <div class="row g-2">
+
+            <div class="col-md-4">
+                <input
+                    type="date"
+                    id="clockDate"
+                    class="form-control"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <button
+                    class="btn btn-dark w-100"
+                    onclick="setClock()"
+                >
+                    Run Morning Job
+                </button>
+            </div>
+
+            <div class="col-md-4">
+                <button
+                    class="btn btn-outline-dark w-100"
+                    onclick="viewOutbox()"
+                >
+                    View Notification Outbox
+                </button>
+            </div>
+
+        </div>
+
+        <pre
+            id="outboxResult"
+            class="bg-light rounded p-3 mt-3 small"
+            style="max-height:260px; overflow:auto;"
+        ></pre>
+
+    </div>
+
+
+    <!-- T4 -->
+    <div class="card card-soft p-4 mt-4">
+
+        <h5 class="fw-bold">
+            🧹 Messy Customer Data Import
+        </h5>
+
+        <p class="text-secondary small">
+            Paste JSON customer records. Invalid and duplicate records
+            are separated into imported, deduped and rejected reports.
+        </p>
+
+        <textarea
+            id="importData"
+            class="form-control mb-3"
+            spellcheck="false"
+        >{
+  "records": [
+    {
+      "name": "Rahul Sharma",
+      "phone": "98-7654-3210",
+      "plan_price": "3000",
+      "start_date": "15/09/2026"
+    },
+    {
+      "name": "Priya",
+      "phone": "9876543210",
+      "plan_price": 3000,
+      "start_date": "2026-09-16"
+    },
+    {
+      "name": "",
+      "phone": "9999999999",
+      "plan_price": 3000,
+      "start_date": "16/09/2026"
+    }
+  ]
+}</textarea>
+
+        <button
+            class="btn btn-warning"
+            onclick="importMessyData()"
+        >
+            Import & Clean Data
+        </button>
+
+        <pre
+            id="importResult"
+            class="bg-light rounded p-3 mt-3 small"
+            style="max-height:320px; overflow:auto;"
+        ></pre>
+
+    </div>
+
 </div>
+
+
+<script>
+
+function showAlert(message, type = "success") {
+
+    const box = document.getElementById("alertBox");
+
+    box.className = `alert alert-${type}`;
+    box.textContent = message;
+
+    setTimeout(() => {
+        box.className = "alert d-none";
+    }, 3500);
+}
+
+
+async function parseResponse(response) {
+
+    let data = {};
+
+    try {
+        data = await response.json();
+    } catch (error) {
+        data = {};
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            data.error || data.message || "Request failed."
+        );
+    }
+
+    return data;
+}
+
+
+document
+    .getElementById("subscribeForm")
+    .addEventListener("submit", async function(event) {
+
+        event.preventDefault();
+
+        const form = event.target;
+        const formData = new FormData(form);
+
+        try {
+
+            const response = await fetch(
+                "/api/customers",
+                {
+                    method: "POST",
+                    body: formData
+                }
+            );
+
+            const data = await parseResponse(response);
+
+            showAlert(
+                data.message || "Customer subscribed."
+            );
+
+            form.reset();
+
+            setTimeout(() => {
+                window.location.reload();
+            }, 700);
+
+        } catch (error) {
+
+            showAlert(
+                error.message,
+                "danger"
+            );
+        }
+    });
+
+
+async function pauseSubscription(subscriptionId) {
+
+    try {
+
+        const response = await fetch(
+            `/api/subscriptions/${subscriptionId}/pause`,
+            {
+                method: "POST"
+            }
+        );
+
+        const data = await parseResponse(response);
+
+        showAlert(data.message);
+
+        setTimeout(() => {
+            window.location.reload();
+        }, 500);
+
+    } catch (error) {
+
+        showAlert(
+            error.message,
+            "danger"
+        );
+    }
+}
+
+
+async function resumeSubscription(subscriptionId) {
+
+    try {
+
+        const response = await fetch(
+            `/api/subscriptions/${subscriptionId}/resume`,
+            {
+                method: "POST"
+            }
+        );
+
+        const data = await parseResponse(response);
+
+        showAlert(data.message);
+
+        setTimeout(() => {
+            window.location.reload();
+        }, 500);
+
+    } catch (error) {
+
+        showAlert(
+            error.message,
+            "danger"
+        );
+    }
+}
+
+
+async function transferSubscription(subscriptionId) {
+
+    const name = prompt(
+        "Enter new customer name:"
+    );
+
+    if (!name) {
+        return;
+    }
+
+    const phone = prompt(
+        "Enter new customer phone:"
+    );
+
+    if (!phone) {
+        return;
+    }
+
+    const formData = new FormData();
+
+    formData.append(
+        "to_name",
+        name
+    );
+
+    formData.append(
+        "to_phone",
+        phone
+    );
+
+    try {
+
+        const response = await fetch(
+            `/api/subscriptions/${subscriptionId}/transfer`,
+            {
+                method: "POST",
+                body: formData
+            }
+        );
+
+        const data = await parseResponse(response);
+
+        showAlert(data.message);
+
+        setTimeout(() => {
+            window.location.reload();
+        }, 500);
+
+    } catch (error) {
+
+        showAlert(
+            error.message,
+            "danger"
+        );
+    }
+}
+
+
+async function deleteCustomer(customerId) {
+
+    const confirmed = confirm(
+        "Delete this customer and their ownership records?"
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            `/api/customers/${customerId}`,
+            {
+                method: "DELETE"
+            }
+        );
+
+        const data = await parseResponse(response);
+
+        showAlert(data.message);
+
+        setTimeout(() => {
+            window.location.reload();
+        }, 500);
+
+    } catch (error) {
+
+        showAlert(
+            error.message,
+            "danger"
+        );
+    }
+}
+
+
+async function setClock() {
+
+    const dateValue =
+        document.getElementById("clockDate").value;
+
+    const formData = new FormData();
+
+    if (dateValue) {
+        formData.append(
+            "date",
+            dateValue
+        );
+    }
+
+    try {
+
+        const response = await fetch(
+            "/clock",
+            {
+                method: "POST",
+                body: formData
+            }
+        );
+
+        const data = await parseResponse(response);
+
+        document.getElementById("systemDate")
+            .textContent = data.current_date;
+
+        showAlert(
+            `${data.notifications_sent} notification(s) generated.`
+        );
+
+        viewOutbox();
+
+    } catch (error) {
+
+        showAlert(
+            error.message,
+            "danger"
+        );
+    }
+}
+
+
+async function viewOutbox() {
+
+    try {
+
+        const response = await fetch(
+            "/outbox"
+        );
+
+        const data = await parseResponse(response);
+
+        document.getElementById("outboxResult")
+            .textContent = JSON.stringify(
+                data,
+                null,
+                2
+            );
+
+    } catch (error) {
+
+        showAlert(
+            error.message,
+            "danger"
+        );
+    }
+}
+
+
+async function importMessyData() {
+
+    const text =
+        document.getElementById("importData").value;
+
+    let payload;
+
+    try {
+
+        payload = JSON.parse(text);
+
+    } catch (error) {
+
+        showAlert(
+            "Invalid JSON.",
+            "danger"
+        );
+
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "/api/import",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            }
+        );
+
+        const data = await parseResponse(response);
+
+        document.getElementById("importResult")
+            .textContent = JSON.stringify(
+                data,
+                null,
+                2
+            );
+
+        showAlert(
+            `Imported: ${data.summary.imported}, ` +
+            `Deduped: ${data.summary.deduped}, ` +
+            `Rejected: ${data.summary.rejected}`
+        );
+
+        setTimeout(() => {
+            window.location.reload();
+        }, 1200);
+
+    } catch (error) {
+
+        showAlert(
+            error.message,
+            "danger"
+        );
+    }
+}
+
+
+async function loadCustomersFromApi() {
+
+    try {
+
+        const response = await fetch(
+            "/api/customers"
+        );
+
+        const data = await parseResponse(response);
+
+        console.log(
+            "Customer REST API response:",
+            data
+        );
+
+        showAlert(
+            `API loaded ${data.items.length} customers.`
+        );
+
+    } catch (error) {
+
+        showAlert(
+            error.message,
+            "danger"
+        );
+    }
+}
+
+</script>
+
 </body>
 </html>

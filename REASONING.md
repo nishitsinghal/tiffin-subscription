@@ -1,43 +1,162 @@
-# Reasoning
+# REASONING
 
-## Understanding the problem
-The core requirement was: "bill a customer only for the days they were actually served."
-That means pause/resume can't just be a day *counter* — it needs real start/end dates,
-because a bill is calculated per calendar month, and pauses can span across month
-boundaries or happen more than once in a month.
 
-## Data model decisions
-- `Customer` holds identity + monthly `plan_price`. It does NOT store a `status` or
-  `paused_days` column directly — those are *derived*, not stored, to avoid the data
-  getting out of sync with reality.
-- A separate `Pause` table stores `start_date` and `end_date` per pause event.
-  `end_date = NULL` means the customer is still paused right now. This lets a customer
-  be paused and resumed multiple times across their history, and each event is auditable.
-- Bill for a given month = `plan_price / days_in_month * (days_in_month - paused_days_in_month)`,
-  where `paused_days_in_month` is computed by intersecting each `Pause` range with the
-  target month and counting unique days (so overlapping/duplicate pauses aren't double-counted).
+## Understanding the Problem
 
-## Bugs found & fixed during testing
-1. **CSS didn't load** — the stylesheet link pointed at `https://jsdelivr.net` (the CDN's
-   homepage) instead of the actual Bootstrap file URL, so every page rendered unstyled.
-   Fixed by linking the correct Bootstrap 5 CDN path.
-2. **Pause tracking was just a counter** — the first version had a `paused_days` integer
-   that only ever went up via an "add pause day" button, with no actual dates and no
-   monthly reset. This didn't match the brief (pause/resume with real days, billed
-   per month). Replaced it with the date-based `Pause` model above.
-3. **Sorting by "status"** required extra handling since status isn't a stored DB column —
-   it's computed from whether a customer has an open pause. Sorting by status is done in
-   Python after fetching matching rows, since it can't be expressed as a simple SQL `ORDER BY`.
 
-## Testing approach
-- Manually seeded a customer with a 5-day pause earlier in the current month and verified
-  the bill came out to `plan_price * 25/30` for a 30-day month — confirmed correct.
-- Tested pause → resume → pause again on the same customer to confirm multiple `Pause`
-  records don't double-count overlapping days.
-- Tested duplicate phone number rejection on customer creation.
-- Tested search with partial name and partial phone matches, and pagination across pages.
+The application manages monthly tiffin subscriptions and ensures that customers are billed only for the days they actually received service.
 
-## What I'd still improve with more time
-- Currently bills only the *current* month; a "generate bill for any past month" view
-  would need a month/year selector on the dashboard.
-- No edit/delete UI for an existing pause record if a date was entered wrong.
+
+The design also supports the three assigned twists:
+
+- T1 — Morning notifications
+
+- T6 — Mid-cycle transfer
+
+- T4 — Messy data import
+
+
+## Data Model
+
+
+Customer and Subscription are kept separate because a subscription can move from one customer to another.
+
+
+`Ownership` stores:
+
+- customer
+
+- subscription
+
+- start date
+
+- end date
+
+
+`Pause` stores actual pause date ranges instead of a simple counter.
+
+
+`Notification` stores generated delivery notifications.
+
+
+`SystemClock` provides a simulated current date for testing.
+
+
+## Billing Logic
+
+
+The monthly daily rate is:
+
+
+```text
+
+monthly plan price / days in month
+
+```
+
+
+Only days that are both owned by the customer and not paused are counted.
+
+
+```text
+
+bill = daily rate × served days
+
+```
+
+
+Because ownership is stored by date range, transferred subscriptions are automatically split between the old and new customer.
+
+
+## T1 — Notifications
+
+
+`POST /clock` changes the simulated date and runs the morning job.
+
+
+A notification is created when:
+
+- it is a weekday
+
+- the customer owns a subscription
+
+- the subscription is not paused
+
+
+Existing notifications for the same customer and date are not duplicated.
+
+
+## T6 — Transfer
+
+
+A transfer keeps the same subscription.
+
+
+The old ownership ends before the transfer date and a new ownership starts on the transfer date.
+
+
+This preserves the plan price and pause history while allowing billing to be split correctly.
+
+
+## T4 — Messy Import
+
+
+The import API validates each record independently.
+
+
+Phone numbers are normalized, multiple date formats are supported, and invalid records do not stop the whole import.
+
+
+Records are returned as:
+
+- imported
+
+- deduped
+
+- rejected
+
+
+## Testing
+
+
+The main tests performed were:
+
+- registration and login
+
+- customer subscription
+
+- pause and resume
+
+- pro-rated billing
+
+- mid-cycle transfer
+
+- weekday notifications
+
+- weekend notification skipping
+
+- duplicate notification prevention
+
+- messy data import
+
+- search
+
+- sorting
+
+- pagination
+
+
+## Future Improvements
+
+
+Possible future improvements include:
+
+- real SMS/WhatsApp notifications
+
+- customer self-service portal
+
+- CSV import
+
+- detailed billing history
+
+- delivery route planning
